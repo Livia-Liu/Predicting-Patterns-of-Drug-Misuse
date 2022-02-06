@@ -1,0 +1,464 @@
+---
+title: "A Report about Misuse of Drug in Canada"
+author: "Report prepared by Group GO!"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '2'
+  pdf_document:
+    template: report.tex
+    toc: yes
+    toc_depth: 2
+subtitle: An in-depth statistical analysis to investigate the factor that influence
+  the misuse of drug the most
+lang: en
+titlepage: yes
+titlepage-color: 6C3082
+titlepage-rule-color: FFFFFF
+titlepage-rule-height: 2
+titlepage-text-color: FFFFFF
+---
+
+```{r, message = FALSE, warning=FALSE, include=FALSE}
+library(dplyr)
+library(kableExtra)
+library(cowplot)
+library(tidyverse)
+library(lme4)
+data <- read_csv("ca.csv")
+
+```
+
+# Data Cleaning
+```{r cars, message=FALSE, warning=FALSE, echo=FALSE}
+df = data %>% 
+  rename(
+    Gender = DEM_GENDER,
+    Age = DEM_AGE,
+    Age_level = DEM_AGE10,
+    Aboriginal = DEM_ABOR,
+    Aboriginal_type = DEM_ABOR_TYPE,
+    Univ_student = DEM_STDNT,
+    Armed_force = DEM_VET,
+    Healthcare_prof = DEM_HEALTH,
+    Province = DEM_LOCATION,
+    Region = DEM_REGION,
+    Postal = DEM_POSTAL,
+    Marital_status = DEM_MARITAL,
+    Income_level = DEM_INCOME,
+    Education = DEM_EDU,
+    Pregnancy = DEM_PREG,
+    Freq_smoking = TOB_FREQ_USE,
+    Freq_drinking = ALC_FREQ_USE
+    )
+
+df$Gender[df$Gender ==1] <- "male"
+df$Gender[df$Gender ==2] <- "female"
+df$Age_level[df$Age_level ==-1] <- "1"
+df$Age_level = as.factor(df$Age_level)
+df$Aboriginal_type[df$Aboriginal_type ==1] <- "First Nations"
+df$Aboriginal_type[df$Aboriginal_type ==2] <- "Metis"
+df$Aboriginal_type[df$Aboriginal_type ==3] <- "Inuit"
+df$Aboriginal_type[is.na(df$Aboriginal_type)] <- "Not Aboriginal"
+
+df$Province[df$Province ==4] <- "New Brunswick"
+df$Province[df$Province ==1] <- "Newfoundland and Labrador"
+df$Province[df$Province ==2] <- "Nova Scotia"
+df$Province[df$Province ==3] <- "Price Edward Island"
+df$Province[df$Province ==5] <- "Quebec"
+df$Province[df$Province ==6] <- "Ontario"
+df$Province[df$Province ==7] <- "Manitoba"
+df$Province[df$Province ==8] <- "Saskatchewan"
+df$Province[df$Province ==9] <- "Alberta"
+df$Province[df$Province ==10] <- "British Columbia"
+df$Province[df$Province ==11] <- "Yukon"
+df$Province[df$Province ==12] <- "Nunavut"
+df$Province[df$Province ==13] <- "Northwest Territories"
+df$Region[df$Region ==1] <- "Atlantic"
+df$Region[df$Region ==2] <- "Quebec"
+df$Region[df$Region ==3] <- "Ontario"
+df$Region[df$Region ==4] <- "West"
+
+df$Marital_status[df$Marital_status ==1] <- "Married"
+df$Marital_status[df$Marital_status ==2] <- "Common-law"
+df$Marital_status[df$Marital_status ==3] <- "Widowed"
+df$Marital_status[df$Marital_status ==4] <- "Separated"
+df$Marital_status[df$Marital_status ==5] <- "Divorced"
+df$Marital_status[df$Marital_status ==6] <- "Single"
+
+#if need categorical variable on smoking & drinking
+#df$Freq_smoking[df$Freq_smoking ==1] <- "Everyday"
+#df$Freq_smoking[df$Freq_smoking ==2] <- "Occasionally"
+#df$Freq_smoking[df$Freq_smoking ==3] <- "NotSmoking"
+
+#df$Freq_drinking = as.factor(df$Freq_drinking)
+
+
+df$Pregnancy[is.na(df$Pregnancy)] <- 2
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+df<- df%>% 
+       mutate(use_drug_without_prescription = 
+                case_when((FENT_NMU == 1) ~ 1,
+                          (BUP_NMU == 1) ~ 1,
+                          (METH_NMU == 1) ~ 1,
+                          (MORPH_NMU == 1) ~ 1,
+                          (OXY_NMU == 1) ~1,
+                          (OXYM_NMU ==1)~1,
+                          (TRAM_NMU ==1) ~1,
+                          (TAP_NMU==1)~1,
+                          (COD_NMU==1)~1,
+                          (HYD_NMU==1)~1,
+                          (HYDM_NMU ==1)~1,
+                          (SUF_NMU ==1)~1,
+                          (STIM_NMU ==1)~1,
+                          (BENZ_NMU ==1)~1,
+                          (THC_NMU==1)~1,
+                          (OTH_RX_DRUG_USE==1)~1))
+df$use_drug_without_prescription[is.na(df$use_drug_without_prescription)] <- 0
+
+df<- df%>% 
+       mutate(use_illegal_drug = 
+                case_when((CAN_REC_USE == 1) ~ 0,
+                          (COKE_USE == 1) ~ 0,
+                          (CRACK_USE == 1) ~ 0,
+                          (MDMA_USE == 1) ~ 0,
+                          (GHB_USE == 1) ~0,
+                          (HAL_USE ==1)~0,
+                          (INH_USE ==1) ~0,
+                          (SPEED_USE==1)~0,
+                          (NPFENT_USE==1)~0,
+                          (HEROIN_USE==1)~0,
+                          (KET_USE ==1)~0,
+                          (MEPH_USE ==1)~0,
+                          (SPICE_USE ==1)~0,
+                          (SAL_USE ==1)~0,
+                          (STER_USE==1)~0))
+df$use_illegal_drug[is.na(df$use_illegal_drug)] <- 1
+
+df<- df%>% 
+       mutate(have_mental_illness = 
+                case_when((MENT_ANX == 1) ~ 1,
+                          (MENT_ADHD == 1) ~ 1,
+                          (MENT_AUT == 1) ~ 1,
+                          (MENT_BIP == 1) ~ 1,
+                          (MENT_BPD == 1) ~1,
+                          (MENT_DEP ==1)~1,
+                          (MENT_EAT ==1) ~1,
+                          (MENT_OCD==1)~1,
+                          (MENT_PANIC==1)~1,
+                          (MENT_PPD==1)~1,
+                          (MENT_PTSD ==1)~1,
+                          (MENT_SCH ==1)~1,
+                          (MENT_OTH ==1)~1))
+df$have_mental_illness[is.na(df$have_mental_illness)] <- 0
+
+df$have_mental_illness = as.factor(df$have_mental_illness)
+df$use_illegal_drug = as.factor(df$use_illegal_drug)
+df$use_drug_without_prescription = as.factor(df$use_drug_without_prescription)
+
+#convert education to a categorical variable
+#df$Education[df$Education ==1] <- "Not Completed High School"
+#df$Education[df$Education ==2] <- "Completed High School"
+#df$Education[df$Education ==3] <- "Trade Certificate/Diploma"
+#df$Education[df$Education ==4] <- "Non-university Certificate or Diploma"
+#df$Education[df$Education ==5] <- "University Certificate/Diploma Below Bachelor's Level"
+#df$Education[df$Education ==6] <- "Bachelor Degree"
+#df$Education[df$Education ==7] <- "University Degree Above Bachelor's Level"
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+df_misuse = filter(df, use_illegal_drug == 1 | use_drug_without_prescription == 1)
+df <- df %>%
+      mutate(illegal = case_when((use_drug_without_prescription == 1) ~ 1,
+                                 (use_illegal_drug == 1) ~ 1))
+df$illegal[is.na(df$illegal)] <- 0
+
+df_misuse_prescription = filter(df, use_drug_without_prescription == 1)
+
+df_misues_illegal_drug = filter(df,use_illegal_drug == 1)
+```
+
+
+## Research questions
+
+* Research Question 1: What is the main factors determining people's chance of using illegal drug?
+
+* Research Question 2: What is the main factors influencing the severity of outcomes in drug misuse of people.
+
+\newpage
+## Visualization
+```{r}
+ggplot(df_misuse_prescription, 
+       aes(x = use_drug_without_prescription, 
+           fill =Gender )) + 
+  geom_bar(position = position_dodge(preserve = "single"))+xlab("People who use drug without prescription")+ggtitle("Prescription drug misuse VS Gender")
+```
+```{r}
+ggplot(df_misuse_prescription, 
+       aes(x = use_drug_without_prescription, 
+           fill =Age_level )) + 
+  geom_bar(position = position_dodge(preserve = "single"))+xlab("People who use drug without prescription")+ggtitle("Prescription drug misuse VS Age")
+```
+```{r}
+ggplot(df_misuse_prescription, 
+       aes(x = Aboriginal, 
+           )) + 
+  geom_bar(position = position_dodge(preserve = "single"))+xlab("Proportion of Aboringinal people")+ggtitle("Prescription drug misuse VS Aboiriginal")
+```
+
+```{r}
+ggplot(df_misuse_prescription, aes(fill=use_drug_without_prescription, x=Province)) + 
+    geom_bar(position="dodge")+theme(axis.text.x = element_text(colour = "grey20", size = 10, angle = 90))+ylab("number of people")+ggtitle("Use drug without prescription VS. Province")
+```
+```{r}
+ggplot(df_misuse_prescription, aes(fill=use_drug_without_prescription, x=Region)) + 
+    geom_bar(position="dodge")+theme(axis.text.x = element_text(colour = "grey20", size = 10, angle = 90))+ylab("number of people")+ggtitle("Use drug without prescription VS. Region")
+```
+```{r}
+ggplot(df_misuse_prescription, 
+       aes(x = Education, 
+           fill =use_drug_without_prescription )) + 
+  geom_bar(position = position_dodge(preserve = "single"))+scale_x_continuous(breaks=c(1,2,3,4,5,6,7,8,9,10,11,12))+ylab("number of people")+ggtitle("Use drug without prescription VS. Education")
+```
+
+```{r}
+ggplot(df_misuse_prescription, 
+       aes(x = Income_level, 
+           fill =use_drug_without_prescription )) + 
+  geom_bar(position = position_dodge(preserve = "single"))+theme(axis.text.x = element_text(colour = "grey20", size = 9, angle = 90))+ggtitle("Use drug without prescription VS. Income")
+```
+```{r}
+ggplot(df_misuse,
+       aes(x = DAST_SUM))+geom_histogram(binwidth = 1)
+```
+```{r}
+ggplot(df_misuse_prescription, aes(fill=have_mental_illness, x=use_drug_without_prescription)) + 
+    geom_bar(position="dodge")+theme(axis.text.x = element_text(colour = "grey20", size = 10, angle = 90))+ylab("number of people")+ggtitle("Use drug without prescription VS. Mental illness")
+```
+```{r}
+ggplot(df_misues_illegal_drug, 
+       aes(x = use_illegal_drug, 
+           fill =Age_level )) + 
+  geom_bar(position = position_dodge(preserve = "single"))+xlab("People who use illegal drugs")+ggtitle("Illegal drugs VS Age")
+```
+```{r}
+ggplot(df_misues_illegal_drug, 
+       aes(x = use_illegal_drug, 
+           fill =Gender )) + 
+  geom_bar(position = position_dodge(preserve = "single"))+xlab("People who use illegal drugs")+ggtitle("Illegal drugs VS Gender")
+```
+```{r}
+ggplot(df_misues_illegal_drug, 
+       aes(x = Aboriginal, )) + 
+  geom_bar(position = position_dodge(preserve = "single"))+xlab("Proportion of aboriginal people who use illegal drugs")+ggtitle("Illegal drugs VS Aboriginal")
+```
+```{r}
+ggplot(df_misues_illegal_drug, aes(fill=use_illegal_drug, x=Province)) + 
+    geom_bar(position="dodge")+theme(axis.text.x = element_text(colour = "grey20", size = 10, angle = 90))+ylab("number of people")+ggtitle("Use illegal drugs VS. Province")
+```
+```{r}
+ggplot(df_misues_illegal_drug, aes(fill=use_illegal_drug, x=Region)) + 
+    geom_bar(position="dodge")+theme(axis.text.x = element_text(colour = "grey20", size = 10, angle = 90))+ylab("number of people")+ggtitle("Use illegal drug VS. region")
+```
+```{r}
+ggplot(df_misues_illegal_drug, 
+       aes(x = Income_level, 
+           fill =use_illegal_drug )) + 
+  geom_bar(position = position_dodge(preserve = "single"))+theme(axis.text.x = element_text(colour = "grey20", size = 9, angle = 90))+ggtitle("Use illegal drug VS. Income")
+
+
+ggplot(df_misues_illegal_drug, 
+       aes(x = Education, 
+           fill =use_illegal_drug )) + 
+  geom_bar(position = position_dodge(preserve = "single"))+scale_x_continuous(breaks=c(1,2,3,4,5,6,7,8,9,10,11,12))+ylab("number of people")+ggtitle("Use illegal drug VS. Education")
+```
+
+
+
+```{r}
+ggplot(df_misues_illegal_drug, 
+       aes(x = use_illegal_drug, 
+           fill =have_mental_illness )) + 
+  geom_bar(position = position_dodge(preserve = "single"))+xlab("People who use illegal drugs")+ggtitle("Illegal drugs VS mental illness")
+```
+```{r}
+df_misues_ADHD = filter(df,MENT_ADHD == 1)
+adhd_misuse = filter(df_misuse,MENT_ADHD == 1)
+
+df_misuse_AUT = filter(df,MENT_AUT == 1)
+aut_misuse = filter(df_misuse,MENT_AUT == 1)
+
+df_misuse_BIP = filter(df,MENT_BIP == 1)
+bip_misuse = filter(df_misuse,MENT_BIP == 1)
+
+df_misuse_BPD = filter(df,MENT_BPD == 1)
+bpd_misuse = filter(df_misuse,MENT_BPD == 1)
+
+df_misuse_SCH = filter(df,MENT_SCH == 1)
+sch_misuse = filter(df_misuse,MENT_SCH == 1)
+
+df_misuse_PPD = filter(df,MENT_PPD == 1)
+ppd_misuse = filter(df_misuse,MENT_PPD == 1)
+
+df_misuse_NON = filter(df,MENT_NONE == 1)
+non_misuse = filter(df_misuse,MENT_NONE == 1)
+proportion_adhd = 157/378
+proportion_aut = 39/121
+proportion_bip = 106/308
+proportion_bpd = 93/248
+proportion_sch = 34/93
+proportion_ppd = 70/215
+proportion_non = 1341/6529
+```
+
+\newpage
+
+# Basic Model to Check which factors are more influencial
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+glmm_basic <- glmer(illegal ~ Age + Education + Income_level + Gender 
+                 + Freq_drinking + Freq_smoking
+                 + Aboriginal + have_mental_illness + (1|Province),
+                data = df, family=binomial())
+
+t1 <- summary(glmm_basic)$coefficients
+t1 <- cbind(t1, t1[,1])
+
+colnames(t1)<- c("Estimate","Std. Error","z value","Pr(>|z|)","OddsRatio")
+t1[,5] <- exp(t1[,1])
+
+knitr::kable(t1, digits = 4, cap="GLMM Estimation of Drug Misuse")%>%
+  kable_styling(latex_options = "hold_position")
+```
+
+According to the table, being aboriginal people or not seems to have the largest influence on people's chance of using illegal drug (keep all other variables constant, an aboriginal people's chance of having used illegal drug is 2.64 the chance of a non-aboriginal people)
+Having mental illness is another influential predictor for using illegal drug.
+
+#Severity of Drug Misuse Outcome
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+glmm_severity <- glmer(DAST_SUM ~ Age + Education + Income_level + Gender 
+                 + Freq_drinking + Freq_smoking
+                 + Aboriginal + have_mental_illness + (1|Province),
+                data = df, family=poisson())
+
+t2 <- summary(glmm_severity)$coefficients
+t2 <- cbind(t2, t2[,1])
+
+colnames(t2)<- c("Estimate","Std. Error","z value","Pr(>|z|)","OddsRatio")
+t2[,5] <- exp(t2[,1])
+
+knitr::kable(t2, digits = 4, cap="GLMM Model Estimation of Drug Misuse (Severity)")%>%
+  kable_styling(latex_options = "hold_position")
+```
+
+Similar result as above regarding severity of the result of drug misuse
+
+# Deeper investigation of aboriginal
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+#illegal drug use
+glmm_aboriginal <- glmer(illegal ~ Aboriginal_type + (1|Province),
+                data = df, family=binomial())
+
+t3 <- summary(glmm_aboriginal)$coefficients
+t3 <- cbind(t3, t3[,1])
+
+colnames(t3)<- c("Estimate","Std. Error","z value","Pr(>|z|)","OddsRatio")
+t3[,5] <- exp(t3[,1])
+
+knitr::kable(t3, digits = 4, cap="Parameter Estimation of GLMM Regaridng Aboriginal Groups")%>%
+  kable_styling(latex_options = "hold_position")
+
+#severity
+glmm_aboriginal_severity <- glmer(DAST_SUM ~ Aboriginal_type + (1|Province),
+                data = df, family=poisson())
+
+t4 <- summary(glmm_aboriginal_severity)$coefficients
+t4 <- cbind(t4, t4[,1])
+
+colnames(t4)<- c("Estimate","Std. Error","z value","Pr(>|z|)","OddsRatio")
+t4[,5] <- exp(t4[,1])
+
+knitr::kable(t4, digits = 4, cap="Parameter Estimation of GLMM Regaridng Aboriginal Groups (Severity)")%>%
+  kable_styling(latex_options = "hold_position")
+```
+
+Among all three types of aboriginal people (First Nations/Métis/Inuit), First Nation people have both highest chance of drug misuses and have achieved the severest outcome on average.
+
+
+# Deeper investigation of Having mental illness
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+#illegal drug use
+glmm_mental <- glmer(illegal ~ MENT_ANX + MENT_ADHD + MENT_AUT + MENT_BIP + MENT_BPD
+                         + MENT_DEP + MENT_EAT + MENT_OCD + MENT_PANIC + MENT_PPD + MENT_PTSD
+                         + MENT_SCH + MENT_OTH
+                         + (1|Province),
+                data = df, family=binomial())
+
+t5 <- summary(glmm_mental)$coefficients
+t5 <- cbind(t5, t5[,1])
+
+colnames(t5)<- c("Estimate","Std. Error","z value","Pr(>|z|)","OddsRatio")
+t5[,5] <- exp(t5[,1])
+
+knitr::kable(t5, digits = 4, cap="Parameter Estimation of GLMM Regaridng Mental Illness")%>%
+  kable_styling(latex_options = "hold_position")
+
+#severity
+glmm_mental_severity <- glmer(DAST_SUM ~ MENT_ANX + MENT_ADHD + MENT_AUT + MENT_BIP + MENT_BPD
+                         + MENT_DEP + MENT_EAT + MENT_OCD + MENT_PANIC + MENT_PPD + MENT_PTSD
+                         + MENT_SCH + MENT_OTH
+                         + (1|Province),
+                data = df, family=poisson())
+
+t6 <- summary(glmm_mental_severity)$coefficients
+t6 <- cbind(t6, t6[,1])
+
+colnames(t6)<- c("Estimate","Std. Error","z value","Pr(>|z|)","OddsRatio")
+t6[,5] <- exp(t6[,1])
+
+knitr::kable(t6, digits = 4, cap="Parameter Estimation of GLMM Regaridng Mental Illness (Severity)")%>%
+  kable_styling(latex_options = "hold_position")
+```
+
+Among all mental illness, Borderline Personality Disorder (BPD) will lead to highest chance of drug misuse, it also lead to the severest outcomes.
+
+# Figures to help understanding of model
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+#figure 5
+ggplot(df, aes(x= Aboriginal_type,  group=illegal)) + 
+    geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") +
+    geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percentage") + 
+    facet_grid(~illegal) +
+    scale_y_continuous(labels = scales::percent)
+  #ggtitle("Percentage of Different Aboriginal People Among all Severity of Drug Misuse")
+
+#figure 7
+ggplot(df, aes(x = DAST_SUM)) +
+  geom_bar(aes(y = (..count..)/sum(..count..), fill = Aboriginal_type)) +
+  xlab("Severity Score") +
+  scale_y_continuous(labels = scales::percent, name = "Proportion") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  #ggtitle("Figure 6: Percentage of Racial Group in Drug Misuse vs. Severity") + 
+  facet_grid(~illegal,scales="free_x", space="free_x")+
+  labs(fill = "Aboriginal Types")
+
+#figure 6
+ggplot(df, aes(x = illegal)) +
+  geom_bar(aes(y = (..count..)/sum(..count..), fill = Aboriginal_type)) +
+  xlab("Have Used Illegal Drugs or Not") +
+  scale_y_continuous(labels = scales::percent, name = "Proportion") +
+  geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", size = 3) +
+    labs(y = "Percentage") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  ggtitle(" ") + 
+  facet_grid(~Aboriginal_type,scales="free_x", space="free_x")+
+  labs(fill = "Aboriginal_type")
+```
+
